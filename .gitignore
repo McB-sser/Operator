@@ -1,16 +1,20 @@
-# Compiled class file
+# Minecraft plugin / Java
 *.class
-
-# Log file
 *.log
+hs_err_pid*
+replay_pid*
 
-# BlueJ files
-*.ctxt
+# Build output
+build/
+target/
+out/
+bin/
+dist/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# Dependency caches
+.gradle/
 
-# Package Files #
+# Packaged plugin artifacts
 *.jar
 *.war
 *.nar
@@ -18,7 +22,35 @@
 *.zip
 *.tar.gz
 *.rar
+!gradle/wrapper/gradle-wrapper.jar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# IDE / editor files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# Local test server files
+plugins/
+logs/
+world/
+world_nether/
+world_the_end/
+paperclip.jar
+spigot*.jar
+paper*.jar
+purpur*.jar
+server.jar
+eula.txt
+banned-ips.json
+banned-players.json
+ops.json
+usercache.json
+whitelist.json
+server.properties
+
+# OS files
+.DS_Store
+Thumbs.db
