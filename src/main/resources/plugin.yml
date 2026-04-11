@@ -1,7 +1,7 @@
-﻿name: Operator
+name: Operator
 version: 1.0.0
 main: mcbesser.operator.OperatorPlugin
-api-version: "1.20"
+api-version: "26.1.1"
 authors:
   - McBesser
 description: GUI for operators to teleport to players and restart loaded plugins.
