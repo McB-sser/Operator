@@ -236,8 +236,15 @@ public final class VanillaWorldEditManager implements Listener {
 
     private void updateStoredMaterial(Player player, ItemStack cursor) {
         if (cursor != null && !cursor.getType().isAir()) {
-            materialSelections.put(player.getUniqueId(), cursor.getType());
-            player.sendMessage(ChatColor.GREEN + "Material gesetzt auf " + formatMaterial(cursor.getType()) + ".");
+            Material resolvedMaterial = resolvePlaceableMaterial(cursor.getType());
+            if (resolvedMaterial == null) {
+                player.sendMessage(ChatColor.RED + "Dieses Item kann nicht als Blockmaterial verwendet werden.");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                return;
+            }
+
+            materialSelections.put(player.getUniqueId(), resolvedMaterial);
+            player.sendMessage(ChatColor.GREEN + "Material gesetzt auf " + formatMaterial(resolvedMaterial) + ".");
             return;
         }
         if (materialSelections.remove(player.getUniqueId()) != null) {
@@ -303,6 +310,19 @@ public final class VanillaWorldEditManager implements Listener {
 
     private String formatMaterial(Material material) {
         return material.name().toLowerCase().replace('_', ' ');
+    }
+
+    private Material resolvePlaceableMaterial(Material input) {
+        if (input == Material.WATER_BUCKET) {
+            return Material.WATER;
+        }
+        if (input == Material.LAVA_BUCKET) {
+            return Material.LAVA;
+        }
+        if (input == Material.POWDER_SNOW_BUCKET) {
+            return Material.POWDER_SNOW;
+        }
+        return input.isBlock() ? input : null;
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
