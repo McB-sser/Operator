@@ -304,7 +304,7 @@ public final class VanillaWorldEditManager implements Listener {
                 "Lege ein Item auf den Cursor und klicke hier.",
                 "Leer gelassen = Air.");
         }
-        return createItem(material, ChatColor.GREEN + "Fill-Material: " + formatMaterial(material),
+        return createItem(resolveDisplayMaterial(material), ChatColor.GREEN + "Fill-Material: " + formatMaterial(material),
             "Klicke mit leerem Cursor, um es zu entfernen.");
     }
 
@@ -323,6 +323,16 @@ public final class VanillaWorldEditManager implements Listener {
             return Material.POWDER_SNOW;
         }
         return input.isBlock() ? input : null;
+    }
+
+    private Material resolveDisplayMaterial(Material storedMaterial) {
+        if (storedMaterial == Material.WATER) {
+            return Material.WATER_BUCKET;
+        }
+        if (storedMaterial == Material.LAVA) {
+            return Material.LAVA_BUCKET;
+        }
+        return storedMaterial;
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
