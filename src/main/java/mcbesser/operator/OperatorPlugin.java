@@ -18,11 +18,15 @@ import java.util.Locale;
 public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
 
     private OperatorMenu menu;
+    private VanillaWorldEditManager vanillaWorldEditManager;
 
     @Override
     public void onEnable() {
         this.menu = new OperatorMenu(this);
+        this.vanillaWorldEditManager = new VanillaWorldEditManager(this, menu);
+        this.menu.setVanillaWorldEditManager(vanillaWorldEditManager);
         Bukkit.getPluginManager().registerEvents(menu, this);
+        Bukkit.getPluginManager().registerEvents(vanillaWorldEditManager, this);
         if (getCommand("operator") != null) {
             getCommand("operator").setTabCompleter(this);
         }
@@ -31,6 +35,9 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
 
     @Override
     public void onDisable() {
+        if (vanillaWorldEditManager != null) {
+            vanillaWorldEditManager.stopTask();
+        }
         getLogger().info("Operator disabled.");
     }
 
@@ -52,6 +59,16 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
         }
 
         String subcommand = args[0].toLowerCase(Locale.ROOT);
+        if (subcommand.equals("vwe")) {
+            vanillaWorldEditManager.openMenu(player);
+            return true;
+        }
+
+        if (subcommand.equals("wand")) {
+            vanillaWorldEditManager.giveWand(player);
+            return true;
+        }
+
         if (subcommand.equals("tp")) {
             if (args.length < 2) {
                 player.sendMessage(ChatColor.RED + "Usage: /operator tp <player>");
@@ -154,7 +171,7 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
             return true;
         }
 
-        player.sendMessage(ChatColor.RED + "Usage: /operator [tp <player>|tphere <player>|plugin <reload|enabled|disabled> <name>]");
+        player.sendMessage(ChatColor.RED + "Usage: /operator [vwe|wand|tp <player>|tphere <player>|plugin <reload|enabled|disabled> <name>]");
         return true;
     }
 
@@ -211,6 +228,8 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
             List<String> suggestions = new ArrayList<>();
             suggestions.add("tp");
             suggestions.add("tphere");
+            suggestions.add("vwe");
+            suggestions.add("wand");
             suggestions.add("plugin");
             return filterSuggestions(suggestions, args[0]);
         }

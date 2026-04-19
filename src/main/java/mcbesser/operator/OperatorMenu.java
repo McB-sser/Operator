@@ -32,6 +32,7 @@ public final class OperatorMenu implements Listener {
     private static final int PAGE_SIZE = 45;
 
     private final OperatorPlugin plugin;
+    private VanillaWorldEditManager vanillaWorldEditManager;
     private final Map<UUID, Integer> playerPages = new HashMap<>();
     private final Map<UUID, Integer> tpHerePages = new HashMap<>();
     private final Map<UUID, Integer> pluginPages = new HashMap<>();
@@ -41,6 +42,10 @@ public final class OperatorMenu implements Listener {
         this.plugin = plugin;
     }
 
+    public void setVanillaWorldEditManager(VanillaWorldEditManager vanillaWorldEditManager) {
+        this.vanillaWorldEditManager = vanillaWorldEditManager;
+    }
+
     public void openMainMenu(Player player) {
         Inventory inventory = Bukkit.createInventory(null, 27, MAIN_TITLE);
         fillInventory(inventory);
@@ -48,6 +53,9 @@ public final class OperatorMenu implements Listener {
             ChatColor.GRAY + "Open a list of online players."));
         inventory.setItem(13, createItem(Material.LEAD, ChatColor.GOLD + "Teleport Player Here",
             ChatColor.GRAY + "Bring a player to your location."));
+        inventory.setItem(15, createItem(Material.BREEZE_ROD, ChatColor.AQUA + "VanillaWorldEdit",
+            ChatColor.GRAY + "Open region tools and Selection Stick.",
+            ChatColor.YELLOW + "Includes fill, hollow, walls and more."));
         inventory.setItem(16, createItem(Material.COMPARATOR, ChatColor.LIGHT_PURPLE + "Manage Plugins",
             ChatColor.GRAY + "Show loaded plugins.",
             ChatColor.YELLOW + "Restart plugins from the GUI."));
@@ -206,6 +214,11 @@ public final class OperatorMenu implements Listener {
 
         if (type == Material.LEAD) {
             openTpHereMenu(player, 0);
+            return;
+        }
+
+        if (type == Material.BREEZE_ROD && vanillaWorldEditManager != null) {
+            vanillaWorldEditManager.openMenu(player);
             return;
         }
 

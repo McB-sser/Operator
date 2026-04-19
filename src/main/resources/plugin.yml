@@ -4,11 +4,11 @@ main: mcbesser.operator.OperatorPlugin
 api-version: "26.1.1"
 authors:
   - McBesser
-description: GUI for operators to teleport to players and restart loaded plugins.
+description: GUI for operators with teleport, plugin control and VanillaWorldEdit tools.
 commands:
   operator:
     description: Opens the operator menu.
-    usage: /operator [tp <player>|tphere <player>|plugin <reload|enabled|disabled> <name>]
+    usage: /operator [vwe|wand|tp <player>|tphere <player>|plugin <reload|enabled|disabled> <name>]
     permission: operator.use
 permissions:
   operator.use:
