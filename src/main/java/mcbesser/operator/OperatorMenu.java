@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
@@ -41,9 +42,14 @@ public final class OperatorMenu implements Listener {
     private static final String PLUGIN_RESTART_TITLE = ChatColor.DARK_RED + "Plugin-Neustart";
     private static final String PERFORMANCE_TITLE = ChatColor.DARK_AQUA + "Performance-Zentrum";
     private static final String PERFORMANCE_OBJECTIVE_ID = "operator_perf";
+    private static final String ENTITY_TYPE_OBJECTIVE_ID = "operator_types";
     private static final int PAGE_SIZE = 45;
     private static final int SCOREBOARD_UPDATE_TICKS = 20;
     private static final int PLAYER_CHUNK_RADIUS = 4;
+    private static final ChatColor[] ENTITY_TYPE_COLORS = {
+        ChatColor.RED, ChatColor.GOLD, ChatColor.YELLOW, ChatColor.GREEN, ChatColor.AQUA, ChatColor.BLUE,
+        ChatColor.LIGHT_PURPLE, ChatColor.WHITE, ChatColor.DARK_RED, ChatColor.DARK_GREEN, ChatColor.DARK_AQUA
+    };
 
     private final OperatorPlugin plugin;
     private VanillaWorldEditManager vanillaWorldEditManager;
@@ -51,7 +57,7 @@ public final class OperatorMenu implements Listener {
     private final Map<UUID, Integer> tpHerePages = new HashMap<>();
     private final Map<UUID, Integer> pluginPages = new HashMap<>();
     private final Map<UUID, String> selectedPlugins = new HashMap<>();
-    private final Set<UUID> performanceScoreboardEnabled = new HashSet<>();
+    private final Map<UUID, ScoreboardMode> activeScoreboards = new HashMap<>();
     private final Map<UUID, Scoreboard> previousScoreboards = new HashMap<>();
     private BukkitTask performanceTask;
 
@@ -170,13 +176,22 @@ public final class OperatorMenu implements Listener {
         fillInventory(inventory);
 
         PerformanceSnapshot snapshot = capturePerformanceSnapshot(player);
-        boolean enabled = performanceScoreboardEnabled.contains(player.getUniqueId());
-        Material scoreboardMaterial = enabled ? Material.LIME_DYE : Material.GRAY_DYE;
-        ChatColor scoreboardColor = enabled ? ChatColor.GREEN : ChatColor.RED;
+        ScoreboardMode activeMode = activeScoreboards.getOrDefault(player.getUniqueId(), ScoreboardMode.NONE);
+        boolean performanceEnabled = activeMode == ScoreboardMode.PERFORMANCE;
+        boolean entityTypesEnabled = activeMode == ScoreboardMode.ENTITY_TYPES;
+        Material performanceMaterial = performanceEnabled ? Material.LIME_DYE : Material.GRAY_DYE;
+        ChatColor performanceColor = performanceEnabled ? ChatColor.GREEN : ChatColor.RED;
+        Material entityTypesMaterial = entityTypesEnabled ? Material.LIME_DYE : Material.GRAY_DYE;
+        ChatColor entityTypesColor = entityTypesEnabled ? ChatColor.GREEN : ChatColor.RED;
 
-        inventory.setItem(11, createItem(scoreboardMaterial, scoreboardColor + "Performance-Scoreboard",
+        inventory.setItem(10, createItem(performanceMaterial, performanceColor + "Performance-Scoreboard",
             ChatColor.GRAY + "Schaltet die Live-Seitenleiste ein oder aus.",
-            ChatColor.YELLOW + "Aktuell: " + (enabled ? "aktiviert" : "deaktiviert")));
+            ChatColor.YELLOW + "Aktuell: " + (performanceEnabled ? "aktiviert" : "deaktiviert"),
+            ChatColor.GRAY + "Wenn aktiv, ist das andere Board aus."));
+        inventory.setItem(11, createItem(entityTypesMaterial, entityTypesColor + "Entity-Typen-Scoreboard",
+            ChatColor.GRAY + "Zeigt globale Entity-Typen live an.",
+            ChatColor.YELLOW + "In Klammern: Anzahl in Radius 16.",
+            ChatColor.GRAY + "Wenn aktiv, ist das andere Board aus."));
         inventory.setItem(13, createItem(Material.BOOK, ChatColor.AQUA + "Aktuelle Ressourcennutzung",
             ChatColor.GRAY + "RAM belegt: " + ChatColor.WHITE + snapshot.usedMemoryMb() + " MB",
             ChatColor.GRAY + "Chunks geladen: " + ChatColor.WHITE + snapshot.loadedChunks(),
@@ -437,8 +452,14 @@ public final class OperatorMenu implements Listener {
     }
 
     private void handlePerformanceMenuClick(Player player, int slot) {
-        if (slot == 11) {
+        if (slot == 10) {
             togglePerformanceScoreboard(player);
+            openPerformanceMenu(player);
+            return;
+        }
+
+        if (slot == 11) {
+            toggleEntityTypeScoreboard(player);
             openPerformanceMenu(player);
             return;
         }
@@ -509,33 +530,42 @@ public final class OperatorMenu implements Listener {
             performanceTask = null;
         }
 
-        for (UUID playerId : new HashSet<>(performanceScoreboardEnabled)) {
+        for (UUID playerId : new HashSet<>(activeScoreboards.keySet())) {
             Player player = Bukkit.getPlayer(playerId);
             if (player != null && player.isOnline()) {
                 restorePreviousScoreboard(player);
             }
         }
 
-        performanceScoreboardEnabled.clear();
+        activeScoreboards.clear();
         previousScoreboards.clear();
     }
 
     private void togglePerformanceScoreboard(Player player) {
+        toggleScoreboardMode(player, ScoreboardMode.PERFORMANCE);
+    }
+
+    private void toggleEntityTypeScoreboard(Player player) {
+        toggleScoreboardMode(player, ScoreboardMode.ENTITY_TYPES);
+    }
+
+    private void toggleScoreboardMode(Player player, ScoreboardMode newMode) {
         UUID playerId = player.getUniqueId();
-        if (performanceScoreboardEnabled.contains(playerId)) {
-            performanceScoreboardEnabled.remove(playerId);
+        ScoreboardMode currentMode = activeScoreboards.getOrDefault(playerId, ScoreboardMode.NONE);
+        if (currentMode == newMode) {
+            activeScoreboards.remove(playerId);
             restorePreviousScoreboard(player);
-            player.sendMessage(ChatColor.YELLOW + "Performance-Scoreboard deaktiviert.");
+            player.sendMessage(ChatColor.YELLOW + newMode.disabledMessage());
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 0.8f);
             stopPerformanceTaskIfUnused();
             return;
         }
 
         previousScoreboards.putIfAbsent(playerId, player.getScoreboard());
-        performanceScoreboardEnabled.add(playerId);
-        updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot(player));
+        activeScoreboards.put(playerId, newMode);
+        updateActiveScoreboard(player);
         startPerformanceTaskIfNeeded();
-        player.sendMessage(ChatColor.GREEN + "Performance-Scoreboard aktiviert.");
+        player.sendMessage(ChatColor.GREEN + newMode.enabledMessage());
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.2f);
     }
 
@@ -545,20 +575,20 @@ public final class OperatorMenu implements Listener {
         }
 
         performanceTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (performanceScoreboardEnabled.isEmpty()) {
+            if (activeScoreboards.isEmpty()) {
                 stopPerformanceTaskIfUnused();
                 return;
             }
 
-            for (UUID playerId : new HashSet<>(performanceScoreboardEnabled)) {
+            for (UUID playerId : new HashSet<>(activeScoreboards.keySet())) {
                 Player player = Bukkit.getPlayer(playerId);
                 if (player == null || !player.isOnline()) {
-                    performanceScoreboardEnabled.remove(playerId);
+                    activeScoreboards.remove(playerId);
                     previousScoreboards.remove(playerId);
                     continue;
                 }
 
-                updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot(player));
+                updateActiveScoreboard(player);
             }
 
             stopPerformanceTaskIfUnused();
@@ -566,7 +596,7 @@ public final class OperatorMenu implements Listener {
     }
 
     private void stopPerformanceTaskIfUnused() {
-        if (!performanceScoreboardEnabled.isEmpty() || performanceTask == null) {
+        if (!activeScoreboards.isEmpty() || performanceTask == null) {
             return;
         }
 
@@ -582,6 +612,17 @@ public final class OperatorMenu implements Listener {
         }
 
         player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+    }
+
+    private void updateActiveScoreboard(Player player) {
+        ScoreboardMode mode = activeScoreboards.getOrDefault(player.getUniqueId(), ScoreboardMode.NONE);
+        if (mode == ScoreboardMode.PERFORMANCE) {
+            updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot(player));
+            return;
+        }
+        if (mode == ScoreboardMode.ENTITY_TYPES) {
+            updateEntityTypeScoreboard(player, captureEntityTypeSnapshot(player));
+        }
     }
 
     private void updatePlayerPerformanceScoreboard(Player player, PerformanceSnapshot snapshot) {
@@ -609,6 +650,27 @@ public final class OperatorMenu implements Listener {
         setScore(objective, snapshot.playerChunkLine(), 2);
         setScore(objective, snapshot.playerChunkEntitiesLine(), 1);
         setScore(objective, snapshot.tipLine(), 0);
+
+        player.setScoreboard(scoreboard);
+    }
+
+    private void updateEntityTypeScoreboard(Player player, EntityTypeSnapshot snapshot) {
+        if (Bukkit.getScoreboardManager() == null) {
+            return;
+        }
+
+        Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+        Objective objective = scoreboard.registerNewObjective(ENTITY_TYPE_OBJECTIVE_ID, Criteria.DUMMY,
+            ChatColor.DARK_GREEN + "Entity-Typen");
+        objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+
+        setScore(objective, ChatColor.YELLOW + "Global (R16)", 13);
+        int score = 12;
+        for (String line : snapshot.lines()) {
+            setScore(objective, line, score--);
+        }
+        setScore(objective, ChatColor.GRAY + "Nahe: " + ChatColor.WHITE + snapshot.totalNearby16(), 1);
+        setScore(objective, ChatColor.GRAY + "Global: " + ChatColor.WHITE + snapshot.totalGlobal(), 0);
 
         player.setScoreboard(scoreboard);
     }
@@ -685,6 +747,63 @@ public final class OperatorMenu implements Listener {
             }
         }
         return count;
+    }
+
+    private EntityTypeSnapshot captureEntityTypeSnapshot(Player player) {
+        Map<String, Integer> globalCounts = new HashMap<>();
+        Map<String, Integer> nearby16Counts = new HashMap<>();
+
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Player) {
+                    continue;
+                }
+
+                String typeName = formatEntityTypeName(entity.getType().name());
+                globalCounts.merge(typeName, 1, Integer::sum);
+            }
+        }
+
+        for (Entity entity : player.getNearbyEntities(16.0d, 16.0d, 16.0d)) {
+            if (entity instanceof Player) {
+                continue;
+            }
+
+            String typeName = formatEntityTypeName(entity.getType().name());
+            nearby16Counts.merge(typeName, 1, Integer::sum);
+        }
+
+        List<Map.Entry<String, Integer>> topTypes = globalCounts.entrySet().stream()
+            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()
+                .thenComparing(Map.Entry::getKey))
+            .limit(11)
+            .toList();
+
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < topTypes.size(); i++) {
+            Map.Entry<String, Integer> entry = topTypes.get(i);
+            int nearbyCount = nearby16Counts.getOrDefault(entry.getKey(), 0);
+            lines.add(ENTITY_TYPE_COLORS[i % ENTITY_TYPE_COLORS.length] + compactEntityLine(entry.getKey(), entry.getValue(), nearbyCount));
+        }
+
+        while (lines.size() < 11) {
+            lines.add(ENTITY_TYPE_COLORS[lines.size() % ENTITY_TYPE_COLORS.length] + "-");
+        }
+
+        int totalGlobal = globalCounts.values().stream().mapToInt(Integer::intValue).sum();
+        int totalNearby16 = nearby16Counts.values().stream().mapToInt(Integer::intValue).sum();
+        return new EntityTypeSnapshot(lines, totalGlobal, totalNearby16);
+    }
+
+    private String formatEntityTypeName(String rawName) {
+        return List.of(rawName.split("_")).stream()
+            .map(part -> part.isEmpty() ? part : part.substring(0, 1) + part.substring(1).toLowerCase())
+            .collect(Collectors.joining(""));
+    }
+
+    private String compactEntityLine(String typeName, int globalCount, int nearbyCount) {
+        String compact = typeName.length() > 10 ? typeName.substring(0, 10) : typeName;
+        return compact + " " + globalCount + " (" + nearbyCount + ")";
     }
 
     private String determinePrimaryLoad(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks) {
@@ -799,8 +918,36 @@ public final class OperatorMenu implements Listener {
     }
 
     private String getScoreboardStateLine(Player player) {
-        boolean enabled = performanceScoreboardEnabled.contains(player.getUniqueId());
-        return ChatColor.YELLOW + "Scoreboard: " + (enabled ? ChatColor.GREEN + "AN" : ChatColor.RED + "AUS");
+        ScoreboardMode mode = activeScoreboards.getOrDefault(player.getUniqueId(), ScoreboardMode.NONE);
+        return ChatColor.YELLOW + "Scoreboard: " + mode.menuLabel();
+    }
+
+    private enum ScoreboardMode {
+        NONE("AUS", "", ""),
+        PERFORMANCE("Performance", "Performance-Scoreboard aktiviert.", "Performance-Scoreboard deaktiviert."),
+        ENTITY_TYPES("Entity-Typen", "Entity-Typen-Scoreboard aktiviert.", "Entity-Typen-Scoreboard deaktiviert.");
+
+        private final String menuLabel;
+        private final String enabledMessage;
+        private final String disabledMessage;
+
+        ScoreboardMode(String menuLabel, String enabledMessage, String disabledMessage) {
+            this.menuLabel = menuLabel;
+            this.enabledMessage = enabledMessage;
+            this.disabledMessage = disabledMessage;
+        }
+
+        private String menuLabel() {
+            return this == NONE ? ChatColor.RED + menuLabel : ChatColor.GREEN + menuLabel;
+        }
+
+        private String enabledMessage() {
+            return enabledMessage;
+        }
+
+        private String disabledMessage() {
+            return disabledMessage;
+        }
     }
 
     private record PerformanceSnapshot(
@@ -860,5 +1007,12 @@ public final class OperatorMenu implements Listener {
             }
             return ChatColor.GREEN + "Server wirkt stabil";
         }
+    }
+
+    private record EntityTypeSnapshot(
+        List<String> lines,
+        int totalGlobal,
+        int totalNearby16
+    ) {
     }
 }
