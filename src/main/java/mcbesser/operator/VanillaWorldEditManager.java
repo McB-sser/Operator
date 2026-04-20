@@ -332,6 +332,9 @@ public final class VanillaWorldEditManager implements Listener {
         if (storedMaterial == Material.LAVA) {
             return Material.LAVA_BUCKET;
         }
+        if (storedMaterial == Material.POWDER_SNOW) {
+            return Material.POWDER_SNOW_BUCKET;
+        }
         return storedMaterial;
     }
 
