@@ -35,6 +35,9 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
 
     @Override
     public void onDisable() {
+        if (menu != null) {
+            menu.shutdown();
+        }
         if (vanillaWorldEditManager != null) {
             vanillaWorldEditManager.stopTask();
         }
