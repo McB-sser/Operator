@@ -47,12 +47,12 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Only players can use this command.");
+            sender.sendMessage("Nur Spieler koennen diesen Befehl verwenden.");
             return true;
         }
 
         if (!player.isOp() && !player.hasPermission("operator.use")) {
-            player.sendMessage(ChatColor.RED + "You must be an operator to use this menu.");
+            player.sendMessage(ChatColor.RED + "Du musst Operator sein, um dieses Menue zu benutzen.");
             return true;
         }
 
@@ -74,46 +74,46 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
 
         if (subcommand.equals("tp")) {
             if (args.length < 2) {
-                player.sendMessage(ChatColor.RED + "Usage: /operator tp <player>");
+                player.sendMessage(ChatColor.RED + "Benutzung: /operator tp <spieler>");
                 return true;
             }
 
             Player target = Bukkit.getPlayerExact(args[1]);
             if (target == null || !target.isOnline()) {
-                player.sendMessage(ChatColor.RED + "That player is not online.");
+                player.sendMessage(ChatColor.RED + "Dieser Spieler ist nicht online.");
                 return true;
             }
 
             if (target.getUniqueId().equals(player.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "You are already at your own location.");
+                player.sendMessage(ChatColor.RED + "Du bist bereits an deiner eigenen Position.");
                 return true;
             }
 
             player.teleport(target.getLocation());
-            player.sendMessage(ChatColor.GREEN + "Teleported to " + target.getName() + ".");
+            player.sendMessage(ChatColor.GREEN + "Zu " + target.getName() + " teleportiert.");
             return true;
         }
 
         if (subcommand.equals("tphere")) {
             if (args.length < 2) {
-                player.sendMessage(ChatColor.RED + "Usage: /operator tphere <player>");
+                player.sendMessage(ChatColor.RED + "Benutzung: /operator tphere <spieler>");
                 return true;
             }
 
             Player target = Bukkit.getPlayerExact(args[1]);
             if (target == null || !target.isOnline()) {
-                player.sendMessage(ChatColor.RED + "That player is not online.");
+                player.sendMessage(ChatColor.RED + "Dieser Spieler ist nicht online.");
                 return true;
             }
 
             if (target.getUniqueId().equals(player.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "You cannot bring yourself to yourself.");
+                player.sendMessage(ChatColor.RED + "Du kannst dich nicht selbst zu dir holen.");
                 return true;
             }
 
             target.teleport(player.getLocation());
-            player.sendMessage(ChatColor.GREEN + "Brought " + target.getName() + " to your location.");
-            target.sendMessage(ChatColor.YELLOW + "You were teleported to " + player.getName() + ".");
+            player.sendMessage(ChatColor.GREEN + target.getName() + " wurde zu dir teleportiert.");
+            target.sendMessage(ChatColor.YELLOW + "Du wurdest zu " + player.getName() + " teleportiert.");
             return true;
         }
 
@@ -124,28 +124,28 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
             }
 
             if (args.length < 3) {
-                player.sendMessage(ChatColor.RED + "Usage: /operator plugin <reload|enabled|disabled> <name>");
+                player.sendMessage(ChatColor.RED + "Benutzung: /operator plugin <reload|enabled|disabled> <name>");
                 return true;
             }
 
             String action = args[1].toLowerCase(Locale.ROOT);
             Plugin target = Bukkit.getPluginManager().getPlugin(args[2]);
             if (target == null) {
-                player.sendMessage(ChatColor.RED + "Plugin not found.");
+                player.sendMessage(ChatColor.RED + "Plugin nicht gefunden.");
                 return true;
             }
 
             if (getName().equalsIgnoreCase(target.getName())) {
-                player.sendMessage(ChatColor.RED + "Operator cannot manage itself.");
+                player.sendMessage(ChatColor.RED + "Operator kann sich nicht selbst verwalten.");
                 return true;
             }
 
             if (action.equals("reload")) {
                 boolean restarted = restartPlugin(target);
                 if (restarted) {
-                    player.sendMessage(ChatColor.GREEN + "Plugin " + target.getName() + " was restarted.");
+                    player.sendMessage(ChatColor.GREEN + "Plugin " + target.getName() + " wurde neu gestartet.");
                 } else {
-                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " could not be restarted. Check console.");
+                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " konnte nicht neu gestartet werden. Pruefe die Konsole.");
                 }
                 return true;
             }
@@ -153,9 +153,9 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
             if (action.equals("enabled")) {
                 boolean enabled = enablePlugin(target);
                 if (enabled) {
-                    player.sendMessage(ChatColor.GREEN + "Plugin " + target.getName() + " was enabled.");
+                    player.sendMessage(ChatColor.GREEN + "Plugin " + target.getName() + " wurde aktiviert.");
                 } else {
-                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " could not be enabled. Check console.");
+                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " konnte nicht aktiviert werden. Pruefe die Konsole.");
                 }
                 return true;
             }
@@ -163,18 +163,18 @@ public final class OperatorPlugin extends JavaPlugin implements TabCompleter {
             if (action.equals("disabled")) {
                 boolean disabled = disablePlugin(target);
                 if (disabled) {
-                    player.sendMessage(ChatColor.YELLOW + "Plugin " + target.getName() + " was disabled.");
+                    player.sendMessage(ChatColor.YELLOW + "Plugin " + target.getName() + " wurde deaktiviert.");
                 } else {
-                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " could not be disabled. Check console.");
+                    player.sendMessage(ChatColor.RED + "Plugin " + target.getName() + " konnte nicht deaktiviert werden. Pruefe die Konsole.");
                 }
                 return true;
             }
 
-            player.sendMessage(ChatColor.RED + "Usage: /operator plugin <reload|enabled|disabled> <name>");
+            player.sendMessage(ChatColor.RED + "Benutzung: /operator plugin <reload|enabled|disabled> <name>");
             return true;
         }
 
-        player.sendMessage(ChatColor.RED + "Usage: /operator [vwe|wand|tp <player>|tphere <player>|plugin <reload|enabled|disabled> <name>]");
+        player.sendMessage(ChatColor.RED + "Benutzung: /operator [vwe|wand|tp <spieler>|tphere <spieler>|plugin <reload|enabled|disabled> <name>]");
         return true;
     }
 

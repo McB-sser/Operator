@@ -10,9 +10,11 @@ import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -32,15 +34,16 @@ import org.bukkit.scoreboard.Scoreboard;
 
 public final class OperatorMenu implements Listener {
 
-    private static final String MAIN_TITLE = ChatColor.DARK_BLUE + "Operator Menu";
-    private static final String PLAYER_TITLE = ChatColor.DARK_GREEN + "Teleport Menu";
-    private static final String TPHERE_TITLE = ChatColor.GOLD + "Bring Player Menu";
-    private static final String PLUGIN_TITLE = ChatColor.DARK_PURPLE + "Plugin Menu";
-    private static final String PLUGIN_RESTART_TITLE = ChatColor.DARK_RED + "Plugin Restart";
-    private static final String PERFORMANCE_TITLE = ChatColor.DARK_AQUA + "Performance Center";
+    private static final String MAIN_TITLE = ChatColor.DARK_BLUE + "Operator Menue";
+    private static final String PLAYER_TITLE = ChatColor.DARK_GREEN + "Teleport-Menue";
+    private static final String TPHERE_TITLE = ChatColor.GOLD + "Spieler-herholen-Menue";
+    private static final String PLUGIN_TITLE = ChatColor.DARK_PURPLE + "Plugin-Menue";
+    private static final String PLUGIN_RESTART_TITLE = ChatColor.DARK_RED + "Plugin-Neustart";
+    private static final String PERFORMANCE_TITLE = ChatColor.DARK_AQUA + "Performance-Zentrum";
     private static final String PERFORMANCE_OBJECTIVE_ID = "operator_perf";
     private static final int PAGE_SIZE = 45;
     private static final int SCOREBOARD_UPDATE_TICKS = 20;
+    private static final int PLAYER_CHUNK_RADIUS = 4;
 
     private final OperatorPlugin plugin;
     private VanillaWorldEditManager vanillaWorldEditManager;
@@ -63,34 +66,34 @@ public final class OperatorMenu implements Listener {
     public void openMainMenu(Player player) {
         Inventory inventory = Bukkit.createInventory(null, 27, MAIN_TITLE);
         fillInventory(inventory);
-        inventory.setItem(10, createItem(Material.ENDER_PEARL, ChatColor.AQUA + "Teleport To Player",
-            ChatColor.GRAY + "Open a list of online players."));
-        inventory.setItem(13, createItem(Material.LEAD, ChatColor.GOLD + "Teleport Player Here",
-            ChatColor.GRAY + "Bring a player to your location."));
+        inventory.setItem(10, createItem(Material.ENDER_PEARL, ChatColor.AQUA + "Zu Spieler teleportieren",
+            ChatColor.GRAY + "Oeffnet eine Liste aller Online-Spieler."));
+        inventory.setItem(13, createItem(Material.LEAD, ChatColor.GOLD + "Spieler zu dir holen",
+            ChatColor.GRAY + "Teleportiert einen Spieler zu deiner Position."));
         inventory.setItem(15, createItem(Material.BREEZE_ROD, ChatColor.AQUA + "VanillaWorldEdit",
-            ChatColor.GRAY + "Open region tools and Selection Stick.",
-            ChatColor.YELLOW + "Includes fill, hollow, walls and more."));
-        inventory.setItem(16, createItem(Material.COMPARATOR, ChatColor.LIGHT_PURPLE + "Manage Plugins",
-            ChatColor.GRAY + "Show loaded plugins.",
-            ChatColor.YELLOW + "Restart plugins from the GUI."));
-        inventory.setItem(12, createItem(Material.NETHERITE_SWORD, ChatColor.DARK_RED + "Kill Nearby Entities",
-            ChatColor.GRAY + "Removes nearby non-player entities.",
+            ChatColor.GRAY + "Oeffnet Region-Tools und den Selection Stick.",
+            ChatColor.YELLOW + "Enthaelt Fill, Hollow, Waende und mehr."));
+        inventory.setItem(16, createItem(Material.COMPARATOR, ChatColor.LIGHT_PURPLE + "Plugins verwalten",
+            ChatColor.GRAY + "Zeigt geladene Plugins an.",
+            ChatColor.YELLOW + "Neustart direkt ueber das GUI."));
+        inventory.setItem(12, createItem(Material.NETHERITE_SWORD, ChatColor.DARK_RED + "Nahe Entities loeschen",
+            ChatColor.GRAY + "Entfernt nahe Entities ausser Spielern.",
             ChatColor.YELLOW + "/kill @e[distance=..3, type=!player]"));
-        inventory.setItem(22, createItem(Material.OBSERVER, ChatColor.RED + "Server Problems",
-            ChatColor.GRAY + "Show common lag indicators.",
+        inventory.setItem(22, createItem(Material.OBSERVER, ChatColor.RED + "Server-Probleme",
+            ChatColor.GRAY + "Zeigt haeufige Lag-Indikatoren an.",
             getScoreboardStateLine(player),
-            ChatColor.YELLOW + "Open live performance details."));
+            ChatColor.YELLOW + "Oeffnet Live-Performance-Details."));
         player.openInventory(inventory);
     }
 
     private void openPlayerMenu(Player player, int page) {
         openPlayerSelectionMenu(player, page, PLAYER_TITLE, playerPages,
-            ChatColor.GRAY + "Click to teleport.");
+            ChatColor.GRAY + "Klicken zum Teleportieren.");
     }
 
     private void openTpHereMenu(Player player, int page) {
         openPlayerSelectionMenu(player, page, TPHERE_TITLE, tpHerePages,
-            ChatColor.GRAY + "Click to bring this player to you.");
+            ChatColor.GRAY + "Klicken, um diesen Spieler zu dir zu holen.");
     }
 
     private void openPlayerSelectionMenu(Player player, int page, String title, Map<UUID, Integer> pageMap, String lore) {
@@ -116,8 +119,8 @@ public final class OperatorMenu implements Listener {
         setNavigationItems(inventory);
 
         if (onlinePlayers.isEmpty()) {
-            inventory.setItem(22, createItem(Material.BARRIER, ChatColor.RED + "No Players Online",
-                ChatColor.GRAY + "No other players are available."));
+            inventory.setItem(22, createItem(Material.BARRIER, ChatColor.RED + "Keine Spieler online",
+                ChatColor.GRAY + "Es sind keine anderen Spieler verfuegbar."));
         }
 
         player.openInventory(inventory);
@@ -142,8 +145,8 @@ public final class OperatorMenu implements Listener {
             ChatColor stateColor = enabled ? ChatColor.GREEN : ChatColor.RED;
             inventory.setItem(i - start, createItem(material, nameColor + targetPlugin.getName(),
                 ChatColor.GRAY + "Version: " + targetPlugin.getDescription().getVersion(),
-                stateColor + "State: " + (enabled ? "enabled" : "disabled"),
-                ChatColor.YELLOW + "Click to restart this plugin."));
+                stateColor + "Status: " + (enabled ? "aktiviert" : "deaktiviert"),
+                ChatColor.YELLOW + "Klicken fuer einen Plugin-Neustart."));
         }
 
         setNavigationItems(inventory);
@@ -155,10 +158,10 @@ public final class OperatorMenu implements Listener {
 
         Inventory inventory = Bukkit.createInventory(null, 27, PLUGIN_RESTART_TITLE);
         fillInventory(inventory);
-        inventory.setItem(11, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "Restart " + pluginName,
-            ChatColor.YELLOW + "Disable and enable the plugin again."));
-        inventory.setItem(15, createItem(Material.BARRIER, ChatColor.RED + "Back",
-            ChatColor.GRAY + "Return to the plugin list."));
+        inventory.setItem(11, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + pluginName + " neu starten",
+            ChatColor.YELLOW + "Deaktiviert und aktiviert das Plugin erneut."));
+        inventory.setItem(15, createItem(Material.BARRIER, ChatColor.RED + "Zurueck",
+            ChatColor.GRAY + "Zur Plugin-Liste zurueckkehren."));
         player.openInventory(inventory);
     }
 
@@ -166,25 +169,30 @@ public final class OperatorMenu implements Listener {
         Inventory inventory = Bukkit.createInventory(null, 27, PERFORMANCE_TITLE);
         fillInventory(inventory);
 
-        PerformanceSnapshot snapshot = capturePerformanceSnapshot();
+        PerformanceSnapshot snapshot = capturePerformanceSnapshot(player);
         boolean enabled = performanceScoreboardEnabled.contains(player.getUniqueId());
         Material scoreboardMaterial = enabled ? Material.LIME_DYE : Material.GRAY_DYE;
         ChatColor scoreboardColor = enabled ? ChatColor.GREEN : ChatColor.RED;
 
-        inventory.setItem(11, createItem(scoreboardMaterial, scoreboardColor + "Performance Scoreboard",
-            ChatColor.GRAY + "Toggle the live sidebar on or off.",
-            ChatColor.YELLOW + "Current: " + (enabled ? "enabled" : "disabled")));
-        inventory.setItem(13, createItem(Material.BOOK, ChatColor.AQUA + "Current Resource Usage",
-            ChatColor.GRAY + "Memory used: " + ChatColor.WHITE + snapshot.usedMemoryMb() + " MB",
-            ChatColor.GRAY + "Chunks loaded: " + ChatColor.WHITE + snapshot.loadedChunks(),
-            ChatColor.GRAY + "Entities loaded: " + ChatColor.WHITE + snapshot.loadedEntities(),
-            ChatColor.GRAY + "Tile entities: " + ChatColor.WHITE + snapshot.tileEntities()));
-        inventory.setItem(15, createItem(Material.REDSTONE, ChatColor.GOLD + "Likely Lag Sources",
+        inventory.setItem(11, createItem(scoreboardMaterial, scoreboardColor + "Performance-Scoreboard",
+            ChatColor.GRAY + "Schaltet die Live-Seitenleiste ein oder aus.",
+            ChatColor.YELLOW + "Aktuell: " + (enabled ? "aktiviert" : "deaktiviert")));
+        inventory.setItem(13, createItem(Material.BOOK, ChatColor.AQUA + "Aktuelle Ressourcennutzung",
+            ChatColor.GRAY + "RAM belegt: " + ChatColor.WHITE + snapshot.usedMemoryMb() + " MB",
+            ChatColor.GRAY + "Chunks geladen: " + ChatColor.WHITE + snapshot.loadedChunks(),
+            ChatColor.GRAY + "Entities geladen: " + ChatColor.WHITE + snapshot.loadedEntities(),
+            ChatColor.GRAY + "Tile-Entities: " + ChatColor.WHITE + snapshot.tileEntities()));
+        inventory.setItem(15, createItem(Material.REDSTONE, ChatColor.GOLD + "Wahrscheinliche Lag-Quellen",
             ChatColor.GRAY + snapshot.primaryLoadLabel(),
             ChatColor.GRAY + snapshot.secondaryLoadLabel(),
             ChatColor.YELLOW + snapshot.recommendation()));
-        inventory.setItem(26, createItem(Material.BARRIER, ChatColor.RED + "Back",
-            ChatColor.GRAY + "Return to the main menu."));
+        inventory.setItem(17, createItem(Material.SPYGLASS, ChatColor.GREEN + "Entity-Dichte in deiner Naehe",
+            ChatColor.GRAY + "Innerhalb 64 Bloecke: " + ChatColor.WHITE + snapshot.nearbyEntities64(),
+            ChatColor.GRAY + "Innerhalb 16 Bloecke: " + ChatColor.WHITE + snapshot.nearbyEntities16(),
+            ChatColor.GRAY + "Innerhalb 3 Bloecke: " + ChatColor.WHITE + snapshot.nearbyEntities3(),
+            ChatColor.YELLOW + "Geladene Chunks nahe dir: " + snapshot.playerAreaLoadedChunks()));
+        inventory.setItem(26, createItem(Material.BARRIER, ChatColor.RED + "Zurueck",
+            ChatColor.GRAY + "Zum Hauptmenue zurueckkehren."));
         player.openInventory(inventory);
     }
 
@@ -272,7 +280,7 @@ public final class OperatorMenu implements Listener {
         if (type == Material.NETHERITE_SWORD) {
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "kill @e[distance=..3, type=!player]");
             player.closeInventory();
-            player.sendMessage(ChatColor.GREEN + "Executed: /kill @e[distance=..3, type=!player]");
+            player.sendMessage(ChatColor.GREEN + "Ausgefuehrt: /kill @e[distance=..3, type=!player]");
             player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.2f);
             return;
         }
@@ -315,7 +323,7 @@ public final class OperatorMenu implements Listener {
 
         Player target = Bukkit.getPlayerExact(name);
         if (target == null || !target.isOnline()) {
-            player.sendMessage(ChatColor.RED + "That player is no longer online.");
+            player.sendMessage(ChatColor.RED + "Dieser Spieler ist nicht mehr online.");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             openPlayerMenu(player, playerPages.getOrDefault(player.getUniqueId(), 0));
             return;
@@ -323,7 +331,7 @@ public final class OperatorMenu implements Listener {
 
         player.teleport(target.getLocation());
         player.closeInventory();
-        player.sendMessage(ChatColor.GREEN + "Teleported to " + target.getName() + ".");
+        player.sendMessage(ChatColor.GREEN + "Zu " + target.getName() + " teleportiert.");
         player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
     }
 
@@ -350,7 +358,7 @@ public final class OperatorMenu implements Listener {
 
         Player target = Bukkit.getPlayerExact(name);
         if (target == null || !target.isOnline()) {
-            player.sendMessage(ChatColor.RED + "That player is no longer online.");
+            player.sendMessage(ChatColor.RED + "Dieser Spieler ist nicht mehr online.");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             openTpHereMenu(player, tpHerePages.getOrDefault(player.getUniqueId(), 0));
             return;
@@ -358,8 +366,8 @@ public final class OperatorMenu implements Listener {
 
         target.teleport(player.getLocation());
         player.closeInventory();
-        player.sendMessage(ChatColor.GREEN + "Brought " + target.getName() + " to your location.");
-        target.sendMessage(ChatColor.YELLOW + "You were teleported to " + player.getName() + ".");
+        player.sendMessage(ChatColor.GREEN + target.getName() + " wurde zu dir teleportiert.");
+        target.sendMessage(ChatColor.YELLOW + "Du wurdest zu " + player.getName() + " teleportiert.");
         player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
     }
 
@@ -399,20 +407,20 @@ public final class OperatorMenu implements Listener {
 
         String pluginName = selectedPlugins.get(player.getUniqueId());
         if (pluginName == null || pluginName.isBlank()) {
-            player.sendMessage(ChatColor.RED + "No plugin selected.");
+            player.sendMessage(ChatColor.RED + "Kein Plugin ausgewaehlt.");
             openPluginMenu(player, 0);
             return;
         }
 
         if (plugin.getName().equalsIgnoreCase(pluginName)) {
-            player.sendMessage(ChatColor.RED + "Operator cannot restart itself from its own GUI.");
+            player.sendMessage(ChatColor.RED + "Operator kann sich nicht selbst ueber das eigene GUI neu starten.");
             openPluginMenu(player, pluginPages.getOrDefault(player.getUniqueId(), 0));
             return;
         }
 
         Plugin targetPlugin = Bukkit.getPluginManager().getPlugin(pluginName);
         if (targetPlugin == null) {
-            player.sendMessage(ChatColor.RED + "The selected plugin is no longer loaded.");
+            player.sendMessage(ChatColor.RED + "Das ausgewaehlte Plugin ist nicht mehr geladen.");
             openPluginMenu(player, pluginPages.getOrDefault(player.getUniqueId(), 0));
             return;
         }
@@ -420,10 +428,10 @@ public final class OperatorMenu implements Listener {
         player.closeInventory();
         boolean restarted = plugin.restartPlugin(targetPlugin);
         if (restarted) {
-            player.sendMessage(ChatColor.GREEN + "Plugin " + targetPlugin.getName() + " was restarted.");
+            player.sendMessage(ChatColor.GREEN + "Plugin " + targetPlugin.getName() + " wurde neu gestartet.");
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.2f);
         } else {
-            player.sendMessage(ChatColor.RED + "Plugin " + targetPlugin.getName() + " could not be restarted. Check console.");
+            player.sendMessage(ChatColor.RED + "Plugin " + targetPlugin.getName() + " konnte nicht neu gestartet werden. Pruefe die Konsole.");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
         }
     }
@@ -479,12 +487,12 @@ public final class OperatorMenu implements Listener {
     }
 
     private void setNavigationItems(Inventory inventory) {
-        inventory.setItem(45, createItem(Material.ARROW, ChatColor.YELLOW + "Previous Page",
-            ChatColor.GRAY + "Go to the previous page."));
-        inventory.setItem(49, createItem(Material.BARRIER, ChatColor.RED + "Back",
-            ChatColor.GRAY + "Return to the main menu."));
-        inventory.setItem(53, createItem(Material.ARROW, ChatColor.YELLOW + "Next Page",
-            ChatColor.GRAY + "Go to the next page."));
+        inventory.setItem(45, createItem(Material.ARROW, ChatColor.YELLOW + "Vorherige Seite",
+            ChatColor.GRAY + "Zur vorherigen Seite wechseln."));
+        inventory.setItem(49, createItem(Material.BARRIER, ChatColor.RED + "Zurueck",
+            ChatColor.GRAY + "Zum Hauptmenue zurueckkehren."));
+        inventory.setItem(53, createItem(Material.ARROW, ChatColor.YELLOW + "Naechste Seite",
+            ChatColor.GRAY + "Zur naechsten Seite wechseln."));
     }
 
     private void fillInventory(Inventory inventory) {
@@ -517,7 +525,7 @@ public final class OperatorMenu implements Listener {
         if (performanceScoreboardEnabled.contains(playerId)) {
             performanceScoreboardEnabled.remove(playerId);
             restorePreviousScoreboard(player);
-            player.sendMessage(ChatColor.YELLOW + "Performance scoreboard disabled.");
+            player.sendMessage(ChatColor.YELLOW + "Performance-Scoreboard deaktiviert.");
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 0.8f);
             stopPerformanceTaskIfUnused();
             return;
@@ -525,9 +533,9 @@ public final class OperatorMenu implements Listener {
 
         previousScoreboards.putIfAbsent(playerId, player.getScoreboard());
         performanceScoreboardEnabled.add(playerId);
-        updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot());
+        updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot(player));
         startPerformanceTaskIfNeeded();
-        player.sendMessage(ChatColor.GREEN + "Performance scoreboard enabled.");
+        player.sendMessage(ChatColor.GREEN + "Performance-Scoreboard aktiviert.");
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.2f);
     }
 
@@ -542,7 +550,6 @@ public final class OperatorMenu implements Listener {
                 return;
             }
 
-            PerformanceSnapshot snapshot = capturePerformanceSnapshot();
             for (UUID playerId : new HashSet<>(performanceScoreboardEnabled)) {
                 Player player = Bukkit.getPlayer(playerId);
                 if (player == null || !player.isOnline()) {
@@ -551,7 +558,7 @@ public final class OperatorMenu implements Listener {
                     continue;
                 }
 
-                updatePlayerPerformanceScoreboard(player, snapshot);
+                updatePlayerPerformanceScoreboard(player, capturePerformanceSnapshot(player));
             }
 
             stopPerformanceTaskIfUnused();
@@ -584,17 +591,23 @@ public final class OperatorMenu implements Listener {
 
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
         Objective objective = scoreboard.registerNewObjective(PERFORMANCE_OBJECTIVE_ID, Criteria.DUMMY,
-            ChatColor.RED + "Server Problems");
+            ChatColor.RED + "Server-Probleme");
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
 
-        setScore(objective, ChatColor.RED + "Lag Risk", 8);
-        setScore(objective, snapshot.riskLine(), 7);
-        setScore(objective, ChatColor.GOLD + "Memory", 6);
-        setScore(objective, snapshot.memoryLine(), 5);
-        setScore(objective, ChatColor.YELLOW + "Entities", 4);
-        setScore(objective, snapshot.entityLine(), 3);
-        setScore(objective, ChatColor.AQUA + "Chunks", 2);
-        setScore(objective, snapshot.chunkLine(), 1);
+        setScore(objective, ChatColor.RED + "Lag-Risiko", 14);
+        setScore(objective, snapshot.riskLine(), 13);
+        setScore(objective, ChatColor.GOLD + "Arbeitsspeicher", 12);
+        setScore(objective, snapshot.memoryLine(), 11);
+        setScore(objective, ChatColor.YELLOW + "Globale Ents", 10);
+        setScore(objective, snapshot.entityLine(), 9);
+        setScore(objective, ChatColor.AQUA + "Globale Chunks", 8);
+        setScore(objective, snapshot.chunkLine(), 7);
+        setScore(objective, ChatColor.GREEN + "R64: " + ChatColor.WHITE + snapshot.nearbyEntities64(), 6);
+        setScore(objective, ChatColor.GREEN + "R16: " + ChatColor.WHITE + snapshot.nearbyEntities16(), 5);
+        setScore(objective, ChatColor.GREEN + "R3: " + ChatColor.WHITE + snapshot.nearbyEntities3(), 4);
+        setScore(objective, ChatColor.DARK_AQUA + "Bereich-Chunks", 3);
+        setScore(objective, snapshot.playerChunkLine(), 2);
+        setScore(objective, snapshot.playerChunkEntitiesLine(), 1);
         setScore(objective, snapshot.tipLine(), 0);
 
         player.setScoreboard(scoreboard);
@@ -604,7 +617,7 @@ public final class OperatorMenu implements Listener {
         objective.getScore(line).setScore(score);
     }
 
-    private PerformanceSnapshot capturePerformanceSnapshot() {
+    private PerformanceSnapshot capturePerformanceSnapshot(Player player) {
         Runtime runtime = Runtime.getRuntime();
         long usedMemoryMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         long maxMemoryMb = runtime.maxMemory() / (1024 * 1024);
@@ -629,63 +642,110 @@ public final class OperatorMenu implements Listener {
             }
         }
 
-        String primaryLoadLabel = "Highest load: " + determinePrimaryLoad(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks);
-        String secondaryLoadLabel = "Pressure: " + determinePressureLabel(onlinePlayers, enabledPlugins, loadedChunks);
-        String recommendation = determineRecommendation(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks);
-        String riskLine = determineRiskLine(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks);
+        int nearbyEntities64 = countNearbyNonPlayerEntities(player, 64.0d);
+        int nearbyEntities16 = countNearbyNonPlayerEntities(player, 16.0d);
+        int nearbyEntities3 = countNearbyNonPlayerEntities(player, 3.0d);
+        int playerAreaLoadedChunks = 0;
+        int playerAreaChunkEntities = 0;
+        Chunk centerChunk = player.getLocation().getChunk();
+        World playerWorld = player.getWorld();
+        for (int chunkX = centerChunk.getX() - PLAYER_CHUNK_RADIUS; chunkX <= centerChunk.getX() + PLAYER_CHUNK_RADIUS; chunkX++) {
+            for (int chunkZ = centerChunk.getZ() - PLAYER_CHUNK_RADIUS; chunkZ <= centerChunk.getZ() + PLAYER_CHUNK_RADIUS; chunkZ++) {
+                if (!playerWorld.isChunkLoaded(chunkX, chunkZ)) {
+                    continue;
+                }
+
+                playerAreaLoadedChunks++;
+                Chunk chunk = playerWorld.getChunkAt(chunkX, chunkZ);
+                for (Entity entity : chunk.getEntities()) {
+                    if (!(entity instanceof Player)) {
+                        playerAreaChunkEntities++;
+                    }
+                }
+            }
+        }
+
+        String primaryLoadLabel = "Hoechste Last: " + determinePrimaryLoad(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks);
+        String secondaryLoadLabel = "Druck: " + determinePressureLabel(onlinePlayers, enabledPlugins, loadedChunks);
+        String recommendation = determineRecommendation(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks,
+            nearbyEntities64, nearbyEntities16, nearbyEntities3, playerAreaChunkEntities);
+        String riskLine = determineRiskLine(usedMemoryMb, maxMemoryMb, loadedEntities, tileEntities, loadedChunks,
+            nearbyEntities64, nearbyEntities16, nearbyEntities3, playerAreaChunkEntities);
 
         return new PerformanceSnapshot(usedMemoryMb, maxMemoryMb, loadedChunks, loadedEntities, tileEntities,
-            primaryLoadLabel, secondaryLoadLabel, recommendation, riskLine);
+            primaryLoadLabel, secondaryLoadLabel, recommendation, riskLine,
+            nearbyEntities64, nearbyEntities16, nearbyEntities3, playerAreaLoadedChunks, playerAreaChunkEntities);
+    }
+
+    private int countNearbyNonPlayerEntities(Player player, double radius) {
+        int count = 0;
+        for (Entity entity : player.getNearbyEntities(radius, radius, radius)) {
+            if (!(entity instanceof Player)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private String determinePrimaryLoad(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks) {
         double memoryRatio = maxMemoryMb <= 0 ? 0.0d : (double) usedMemoryMb / maxMemoryMb;
         if (loadedEntities >= 450) {
-            return "too many entities/mobs";
+            return "zu viele Entities/Mobs";
         }
         if (tileEntities >= 180) {
-            return "many hoppers/chests/furnaces";
+            return "viele Hopper/Kisten/Oefen";
         }
         if (loadedChunks >= 650) {
-            return "many loaded chunks";
+            return "sehr viele geladene Chunks";
         }
         if (memoryRatio >= 0.75d) {
-            return "high RAM usage";
+            return "hohe RAM-Auslastung";
         }
-        return "no critical hotspot detected";
+        return "kein kritischer Hotspot erkannt";
     }
 
     private String determinePressureLabel(int onlinePlayers, int enabledPlugins, int loadedChunks) {
         if (onlinePlayers >= 12) {
-            return "many players online";
+            return "viele Spieler online";
         }
         if (enabledPlugins >= 18) {
-            return "many active plugins";
+            return "viele aktive Plugins";
         }
         if (loadedChunks >= 400) {
-            return "chunk activity rising";
+            return "Chunk-Aktivitaet steigt";
         }
-        return "currently moderate";
+        return "derzeit moderat";
     }
 
-    private String determineRecommendation(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks) {
+    private String determineRecommendation(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks,
+                                          int nearbyEntities64, int nearbyEntities16, int nearbyEntities3, int playerAreaChunkEntities) {
         double memoryRatio = maxMemoryMb <= 0 ? 0.0d : (double) usedMemoryMb / maxMemoryMb;
+        if (nearbyEntities3 >= 8) {
+            return "Sehr dichte Entity-Ansammlung an deiner Position.";
+        }
+        if (nearbyEntities16 >= 40 || nearbyEntities64 >= 140) {
+            return "Hohe Mob-/Item-Dichte in deiner Naehe.";
+        }
+        if (playerAreaChunkEntities >= 220) {
+            return "Viele Entities in deinem geladenen Chunk-Bereich.";
+        }
         if (loadedEntities >= 450) {
-            return "Check mob farms and dropped items first.";
+            return "Pruefe zuerst Mobfarmen und gedroppte Items.";
         }
         if (tileEntities >= 180) {
-            return "Inspect hopper lines and auto-sorters.";
+            return "Pruefe Hopper-Leitungen und Auto-Sorter.";
         }
         if (loadedChunks >= 650) {
-            return "Reduce chunk loaders and farm areas.";
+            return "Reduziere Chunkloader und Farmbereiche.";
         }
         if (memoryRatio >= 0.75d) {
-            return "Watch RAM and heavy plugin tasks.";
+            return "Behalte RAM und schwere Plugin-Tasks im Blick.";
         }
-        return "No obvious lag source at the moment.";
+        return "Aktuell keine eindeutige Lag-Quelle erkannt.";
     }
 
-    private String determineRiskLine(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks) {
+    private String determineRiskLine(long usedMemoryMb, long maxMemoryMb, int loadedEntities, int tileEntities, int loadedChunks,
+                                     int nearbyEntities64, int nearbyEntities16, int nearbyEntities3, int playerAreaChunkEntities) {
         double memoryRatio = maxMemoryMb <= 0 ? 0.0d : (double) usedMemoryMb / maxMemoryMb;
         int score = 0;
         if (memoryRatio >= 0.75d) {
@@ -708,19 +768,39 @@ public final class OperatorMenu implements Listener {
         } else if (loadedChunks >= 400) {
             score += 1;
         }
+        if (nearbyEntities64 >= 140) {
+            score += 2;
+        } else if (nearbyEntities64 >= 80) {
+            score += 1;
+        }
+        if (nearbyEntities16 >= 40) {
+            score += 2;
+        } else if (nearbyEntities16 >= 20) {
+            score += 1;
+        }
+        if (nearbyEntities3 >= 8) {
+            score += 2;
+        } else if (nearbyEntities3 >= 4) {
+            score += 1;
+        }
+        if (playerAreaChunkEntities >= 220) {
+            score += 2;
+        } else if (playerAreaChunkEntities >= 120) {
+            score += 1;
+        }
 
         if (score >= 5) {
-            return ChatColor.RED + "High";
+            return ChatColor.RED + "Hoch";
         }
         if (score >= 3) {
-            return ChatColor.GOLD + "Medium";
+            return ChatColor.GOLD + "Mittel";
         }
-        return ChatColor.GREEN + "Low";
+        return ChatColor.GREEN + "Niedrig";
     }
 
     private String getScoreboardStateLine(Player player) {
         boolean enabled = performanceScoreboardEnabled.contains(player.getUniqueId());
-        return ChatColor.YELLOW + "Scoreboard: " + (enabled ? ChatColor.GREEN + "ON" : ChatColor.RED + "OFF");
+        return ChatColor.YELLOW + "Scoreboard: " + (enabled ? ChatColor.GREEN + "AN" : ChatColor.RED + "AUS");
     }
 
     private record PerformanceSnapshot(
@@ -732,31 +812,53 @@ public final class OperatorMenu implements Listener {
         String primaryLoadLabel,
         String secondaryLoadLabel,
         String recommendation,
-        String riskLine
+        String riskLine,
+        int nearbyEntities64,
+        int nearbyEntities16,
+        int nearbyEntities3,
+        int playerAreaLoadedChunks,
+        int playerAreaChunkEntities
     ) {
         private String memoryLine() {
             return ChatColor.WHITE + "" + usedMemoryMb + "/" + maxMemoryMb + " MB";
         }
 
         private String entityLine() {
-            return ChatColor.WHITE + "" + loadedEntities + " loaded";
+            return ChatColor.WHITE + "" + loadedEntities + " geladen";
         }
 
         private String chunkLine() {
-            return ChatColor.WHITE + "" + loadedChunks + " loaded";
+            return ChatColor.WHITE + "" + loadedChunks + " geladen";
+        }
+
+        private String playerChunkLine() {
+            return ChatColor.WHITE + "" + playerAreaLoadedChunks + " geladen";
+        }
+
+        private String playerChunkEntitiesLine() {
+            return ChatColor.WHITE + "" + playerAreaChunkEntities + " ents";
         }
 
         private String tipLine() {
+            if (nearbyEntities3 >= 8) {
+                return ChatColor.RED + "Zu dicht in der Naehe";
+            }
+            if (nearbyEntities16 >= 40 || nearbyEntities64 >= 140) {
+                return ChatColor.YELLOW + "Nahe Entities hoch";
+            }
+            if (playerAreaChunkEntities >= 220) {
+                return ChatColor.YELLOW + "Chunk-Entities hoch";
+            }
             if (loadedEntities >= 450) {
-                return ChatColor.YELLOW + "Check farms";
+                return ChatColor.YELLOW + "Farmen pruefen";
             }
             if (tileEntities >= 180) {
-                return ChatColor.YELLOW + "Check hoppers";
+                return ChatColor.YELLOW + "Hopper pruefen";
             }
             if (loadedChunks >= 650) {
-                return ChatColor.YELLOW + "Check chunks";
+                return ChatColor.YELLOW + "Chunks pruefen";
             }
-            return ChatColor.GREEN + "Server looks stable";
+            return ChatColor.GREEN + "Server wirkt stabil";
         }
     }
 }
