@@ -8,6 +8,7 @@ Features:
 - List loaded plugins in a GUI.
 - Restart a selected plugin through the GUI.
 - Enabled plugins are shown in green, disabled plugins in red.
+- Teleport to loaded entities, with abandoned targets sorted first.
 - `/operator tp <player>` teleports directly by command.
 - `/operator tphere <player>` brings a player to you.
 - `/operator plugin` opens the plugin list directly.

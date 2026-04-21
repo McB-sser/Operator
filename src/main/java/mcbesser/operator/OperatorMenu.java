@@ -12,11 +12,13 @@ import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -38,6 +40,8 @@ public final class OperatorMenu implements Listener {
     private static final String MAIN_TITLE = ChatColor.DARK_BLUE + "Operator Menue";
     private static final String PLAYER_TITLE = ChatColor.DARK_GREEN + "Teleport-Menue";
     private static final String TPHERE_TITLE = ChatColor.GOLD + "Spieler-herholen-Menue";
+    private static final String ENTITY_TELEPORT_TITLE = ChatColor.DARK_AQUA + "Entity-Teleports";
+    private static final String ENTITY_TYPE_MENU_TITLE = ChatColor.DARK_GREEN + "Entity-Typ-Suche";
     private static final String PLUGIN_TITLE = ChatColor.DARK_PURPLE + "Plugin-Menue";
     private static final String PLUGIN_RESTART_TITLE = ChatColor.DARK_RED + "Plugin-Neustart";
     private static final String PERFORMANCE_TITLE = ChatColor.DARK_AQUA + "Performance-Zentrum";
@@ -46,6 +50,7 @@ public final class OperatorMenu implements Listener {
     private static final int PAGE_SIZE = 45;
     private static final int SCOREBOARD_UPDATE_TICKS = 20;
     private static final int PLAYER_CHUNK_RADIUS = 4;
+    private static final double ENTITY_PLAYER_NEARBY_RADIUS = 64.0d;
     private static final ChatColor[] ENTITY_TYPE_COLORS = {
         ChatColor.RED, ChatColor.GOLD, ChatColor.YELLOW, ChatColor.GREEN, ChatColor.AQUA, ChatColor.BLUE,
         ChatColor.LIGHT_PURPLE, ChatColor.WHITE, ChatColor.DARK_RED, ChatColor.DARK_GREEN, ChatColor.DARK_AQUA
@@ -55,6 +60,12 @@ public final class OperatorMenu implements Listener {
     private VanillaWorldEditManager vanillaWorldEditManager;
     private final Map<UUID, Integer> playerPages = new HashMap<>();
     private final Map<UUID, Integer> tpHerePages = new HashMap<>();
+    private final Map<UUID, Integer> entityTeleportPages = new HashMap<>();
+    private final Map<UUID, Integer> entityTypePages = new HashMap<>();
+    private final Map<UUID, String> selectedEntityTypeFilters = new HashMap<>();
+    private final Map<UUID, List<UUID>> visibleEntityTeleports = new HashMap<>();
+    private final Map<UUID, List<EntityTeleportTarget>> visibleEntityTeleportTargets = new HashMap<>();
+    private final Map<UUID, List<String>> visibleEntityTypes = new HashMap<>();
     private final Map<UUID, Integer> pluginPages = new HashMap<>();
     private final Map<UUID, String> selectedPlugins = new HashMap<>();
     private final Map<UUID, ScoreboardMode> activeScoreboards = new HashMap<>();
@@ -76,6 +87,10 @@ public final class OperatorMenu implements Listener {
             ChatColor.GRAY + "Oeffnet eine Liste aller Online-Spieler."));
         inventory.setItem(13, createItem(Material.LEAD, ChatColor.GOLD + "Spieler zu dir holen",
             ChatColor.GRAY + "Teleportiert einen Spieler zu deiner Position."));
+        inventory.setItem(14, createItem(Material.ENDER_EYE, ChatColor.DARK_AQUA + "Entity-Teleports",
+            ChatColor.GRAY + "Listet alle geladenen Entities.",
+            ChatColor.GRAY + "Verlassene Ziele stehen zuerst.",
+            ChatColor.YELLOW + "Klicken, um Teleport-Ziele zu oeffnen."));
         inventory.setItem(15, createItem(Material.BREEZE_ROD, ChatColor.AQUA + "VanillaWorldEdit",
             ChatColor.GRAY + "Oeffnet Region-Tools und den Selection Stick.",
             ChatColor.YELLOW + "Enthaelt Fill, Hollow, Waende und mehr."));
@@ -89,6 +104,92 @@ public final class OperatorMenu implements Listener {
             ChatColor.GRAY + "Zeigt haeufige Lag-Indikatoren an.",
             getScoreboardStateLine(player),
             ChatColor.YELLOW + "Oeffnet Live-Performance-Details."));
+        player.openInventory(inventory);
+    }
+
+    private void openEntityTeleportMenu(Player player, int page) {
+        String typeFilter = selectedEntityTypeFilters.get(player.getUniqueId());
+        List<EntityTeleportTarget> targets = getEntityTeleportTargets(typeFilter);
+        EntityTeleportDebugCounts debugCounts = countEntityTeleportDebugData();
+        int maxPage = Math.max(0, (targets.size() - 1) / PAGE_SIZE);
+        int safePage = Math.max(0, Math.min(page, maxPage));
+        entityTeleportPages.put(player.getUniqueId(), safePage);
+
+        String filterLabel = typeFilter == null ? "" : ChatColor.GRAY + " [" + formatEntityTypeName(typeFilter) + "]";
+        Inventory inventory = Bukkit.createInventory(null, 54, ENTITY_TELEPORT_TITLE + filterLabel + ChatColor.GRAY + " #" + (safePage + 1));
+        fillInventory(inventory);
+
+        List<UUID> visibleTargets = new ArrayList<>();
+        int start = safePage * PAGE_SIZE;
+        int end = Math.min(start + PAGE_SIZE, targets.size());
+        for (int i = start; i < end; i++) {
+            EntityTeleportTarget target = targets.get(i);
+            visibleTargets.add(target.entityId());
+            ChatColor titleColor = target.hasPlayerNearby() ? ChatColor.YELLOW : ChatColor.GREEN;
+            inventory.setItem(i - start, createItem(getEntityIcon(target.entity()), titleColor + target.title(),
+                ChatColor.GRAY + "Typ: " + ChatColor.WHITE + target.typeName(),
+                target.validLine(),
+                ChatColor.GRAY + "Welt: " + ChatColor.WHITE + target.worldName(),
+                ChatColor.GRAY + "Position: " + ChatColor.WHITE + formatBlockLocation(target.location()),
+                ChatColor.GRAY + "Chunk: " + ChatColor.WHITE + target.chunkX() + ", " + target.chunkZ(),
+                target.playerNearbyLine(),
+                target.nearestPlayerLine(),
+                ChatColor.YELLOW + "Klicken zum Teleportieren."));
+        }
+        visibleEntityTeleports.put(player.getUniqueId(), visibleTargets);
+        visibleEntityTeleportTargets.put(player.getUniqueId(), new ArrayList<>(targets.subList(start, end)));
+
+        setNavigationItems(inventory);
+        inventory.setItem(48, createItem(Material.SPYGLASS, ChatColor.AQUA + "Entity-Typen suchen",
+            ChatColor.YELLOW + "Bukkit total: " + debugCounts.bukkitEntities(),
+            ChatColor.YELLOW + "Chunk total: " + debugCounts.chunkEntities(),
+            ChatColor.YELLOW + "Spieler: " + debugCounts.players(),
+            ChatColor.YELLOW + "Tile-Entities: " + debugCounts.tileEntities(),
+            debugCounts.topTypeLine(),
+            ChatColor.GREEN + "Klicken fuer Typ-Auswahl."));
+
+        if (targets.isEmpty()) {
+            inventory.setItem(22, createItem(Material.BARRIER, ChatColor.RED + "Keine Entities gefunden",
+                ChatColor.GRAY + "Es sind keine geladenen Nicht-Spieler-Entities",
+                ChatColor.GRAY + "in Bukkit sichtbar.",
+                ChatColor.YELLOW + "Bukkit total: " + debugCounts.bukkitEntities(),
+                ChatColor.YELLOW + "Chunk total: " + debugCounts.chunkEntities(),
+                ChatColor.YELLOW + "Spieler: " + debugCounts.players(),
+                ChatColor.YELLOW + "Tile-Entities: " + debugCounts.tileEntities(),
+                debugCounts.topTypeLine()));
+        }
+
+        player.openInventory(inventory);
+    }
+
+    private void openEntityTypeMenu(Player player, int page) {
+        List<EntityTypeOption> types = getEntityTypeOptions();
+        int maxPage = Math.max(0, (types.size() - 1) / PAGE_SIZE);
+        int safePage = Math.max(0, Math.min(page, maxPage));
+        entityTypePages.put(player.getUniqueId(), safePage);
+
+        Inventory inventory = Bukkit.createInventory(null, 54, ENTITY_TYPE_MENU_TITLE + ChatColor.GRAY + " #" + (safePage + 1));
+        fillInventory(inventory);
+
+        List<String> visibleTypes = new ArrayList<>();
+        int start = safePage * PAGE_SIZE;
+        int end = Math.min(start + PAGE_SIZE, types.size());
+        for (int i = start; i < end; i++) {
+            EntityTypeOption type = types.get(i);
+            visibleTypes.add(type.rawName());
+            inventory.setItem(i - start, createItem(getEntityTypeIcon(type.rawName()),
+                ChatColor.GREEN + type.displayName(),
+                ChatColor.GRAY + "Geladen: " + ChatColor.WHITE + type.count(),
+                ChatColor.GRAY + "Welt: " + ChatColor.WHITE + type.sampleWorldName(),
+                ChatColor.GRAY + "Beispiel: " + ChatColor.WHITE + formatBlockLocation(type.sampleLocation()),
+                ChatColor.YELLOW + "Klicken, um nur diesen Typ zu zeigen."));
+        }
+        visibleEntityTypes.put(player.getUniqueId(), visibleTypes);
+
+        setNavigationItems(inventory);
+        inventory.setItem(48, createItem(Material.ENDER_EYE, ChatColor.AQUA + "Alle Entity-Typen",
+            ChatColor.GRAY + "Filter entfernen.",
+            ChatColor.YELLOW + "Klicken fuer alle Teleportziele."));
         player.openInventory(inventory);
     }
 
@@ -244,6 +345,16 @@ public final class OperatorMenu implements Listener {
             return;
         }
 
+        if (title.startsWith(ENTITY_TELEPORT_TITLE)) {
+            handleEntityTeleportMenuClick(player, event.getSlot());
+            return;
+        }
+
+        if (title.startsWith(ENTITY_TYPE_MENU_TITLE)) {
+            handleEntityTypeMenuClick(player, event.getSlot());
+            return;
+        }
+
         if (title.startsWith(PLUGIN_TITLE)) {
             handlePluginMenuClick(player, event.getSlot(), clicked);
             return;
@@ -272,6 +383,17 @@ public final class OperatorMenu implements Listener {
             tpHerePages.remove(playerId);
         }
 
+        if (title.startsWith(ENTITY_TELEPORT_TITLE)) {
+            entityTeleportPages.remove(playerId);
+            visibleEntityTeleports.remove(playerId);
+            visibleEntityTeleportTargets.remove(playerId);
+        }
+
+        if (title.startsWith(ENTITY_TYPE_MENU_TITLE)) {
+            entityTypePages.remove(playerId);
+            visibleEntityTypes.remove(playerId);
+        }
+
         if (title.startsWith(PLUGIN_TITLE)) {
             pluginPages.remove(playerId);
         }
@@ -289,6 +411,12 @@ public final class OperatorMenu implements Listener {
 
         if (type == Material.LEAD) {
             openTpHereMenu(player, 0);
+            return;
+        }
+
+        if (type == Material.ENDER_EYE) {
+            selectedEntityTypeFilters.remove(player.getUniqueId());
+            openEntityTeleportMenu(player, 0);
             return;
         }
 
@@ -386,6 +514,100 @@ public final class OperatorMenu implements Listener {
         player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
     }
 
+    private void handleEntityTeleportMenuClick(Player player, int slot) {
+        if (slot == 45) {
+            openEntityTeleportMenu(player, entityTeleportPages.getOrDefault(player.getUniqueId(), 0) - 1);
+            return;
+        }
+
+        if (slot == 49) {
+            openMainMenu(player);
+            return;
+        }
+
+        if (slot == 53) {
+            openEntityTeleportMenu(player, entityTeleportPages.getOrDefault(player.getUniqueId(), 0) + 1);
+            return;
+        }
+
+        if (slot == 48) {
+            openEntityTypeMenu(player, 0);
+            return;
+        }
+
+        if (slot < 0 || slot >= PAGE_SIZE) {
+            return;
+        }
+
+        List<UUID> targets = visibleEntityTeleports.getOrDefault(player.getUniqueId(), List.of());
+        if (slot >= targets.size()) {
+            return;
+        }
+
+        EntityTeleportTarget snapshot = null;
+        List<EntityTeleportTarget> snapshots = visibleEntityTeleportTargets.getOrDefault(player.getUniqueId(), List.of());
+        if (slot < snapshots.size()) {
+            snapshot = snapshots.get(slot);
+        }
+
+        Entity target = findEntity(targets.get(slot));
+        if (target == null || !target.isValid()) {
+            if (snapshot == null) {
+                player.sendMessage(ChatColor.RED + "Diese Entity ist nicht mehr vorhanden.");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                openEntityTeleportMenu(player, entityTeleportPages.getOrDefault(player.getUniqueId(), 0));
+                return;
+            }
+
+            player.teleport(snapshot.location());
+            player.closeInventory();
+            player.sendMessage(ChatColor.YELLOW + "Entity-Objekt war nicht mehr stabil. Zur gespeicherten Position teleportiert: "
+                + snapshot.typeName() + " bei " + formatBlockLocation(snapshot.location()) + ".");
+            player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 0.8f);
+            return;
+        }
+
+        player.teleport(target.getLocation());
+        player.closeInventory();
+        player.sendMessage(ChatColor.GREEN + "Zu Entity " + describeEntity(target) + " teleportiert.");
+        player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+    }
+
+    private void handleEntityTypeMenuClick(Player player, int slot) {
+        if (slot == 45) {
+            openEntityTypeMenu(player, entityTypePages.getOrDefault(player.getUniqueId(), 0) - 1);
+            return;
+        }
+
+        if (slot == 49) {
+            openEntityTeleportMenu(player, entityTeleportPages.getOrDefault(player.getUniqueId(), 0));
+            return;
+        }
+
+        if (slot == 53) {
+            openEntityTypeMenu(player, entityTypePages.getOrDefault(player.getUniqueId(), 0) + 1);
+            return;
+        }
+
+        if (slot == 48) {
+            selectedEntityTypeFilters.remove(player.getUniqueId());
+            openEntityTeleportMenu(player, 0);
+            return;
+        }
+
+        if (slot < 0 || slot >= PAGE_SIZE) {
+            return;
+        }
+
+        List<String> types = visibleEntityTypes.getOrDefault(player.getUniqueId(), List.of());
+        if (slot >= types.size()) {
+            return;
+        }
+
+        selectedEntityTypeFilters.put(player.getUniqueId(), types.get(slot));
+        openEntityTeleportMenu(player, 0);
+    }
+
     private void handlePluginMenuClick(Player player, int slot, ItemStack clicked) {
         if (slot == 45) {
             openPluginMenu(player, pluginPages.getOrDefault(player.getUniqueId(), 0) - 1);
@@ -469,6 +691,208 @@ public final class OperatorMenu implements Listener {
         }
     }
 
+    private List<EntityTeleportTarget> getEntityTeleportTargets(String typeFilter) {
+        List<EntityTeleportTarget> targets = new ArrayList<>();
+        Set<UUID> seenEntities = new HashSet<>();
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                addEntityTeleportTarget(targets, seenEntities, entity, typeFilter);
+            }
+
+            for (Chunk chunk : world.getLoadedChunks()) {
+                for (Entity entity : chunk.getEntities()) {
+                    addEntityTeleportTarget(targets, seenEntities, entity, typeFilter);
+                }
+            }
+        }
+
+        targets.sort(Comparator.comparing(EntityTeleportTarget::hasPlayerNearby)
+            .thenComparing(EntityTeleportTarget::worldName, String.CASE_INSENSITIVE_ORDER)
+            .thenComparing(EntityTeleportTarget::typeName, String.CASE_INSENSITIVE_ORDER)
+            .thenComparingInt(target -> target.location().getBlockX())
+            .thenComparingInt(target -> target.location().getBlockZ())
+            .thenComparingInt(target -> target.location().getBlockY()));
+        return targets;
+    }
+
+    private void addEntityTeleportTarget(List<EntityTeleportTarget> targets, Set<UUID> seenEntities, Entity entity, String typeFilter) {
+        if (entity instanceof Player || !matchesEntityType(entity, typeFilter) || !seenEntities.add(entity.getUniqueId())) {
+            return;
+        }
+
+        Location location = entity.getLocation().clone();
+        double nearestPlayerDistance = nearestPlayerDistance(entity);
+        boolean hasPlayerNearby = nearestPlayerDistance <= ENTITY_PLAYER_NEARBY_RADIUS;
+        targets.add(new EntityTeleportTarget(entity, entity.getUniqueId(), describeEntity(entity),
+            formatEntityTypeName(entity.getType().name()), entity.getWorld().getName(), location,
+            location.getBlockX() >> 4, location.getBlockZ() >> 4, nearestPlayerDistance, hasPlayerNearby, entity.isValid()));
+    }
+
+    private boolean matchesEntityType(Entity entity, String typeFilter) {
+        return typeFilter == null || entity.getType().name().equals(typeFilter);
+    }
+
+    private List<EntityTypeOption> getEntityTypeOptions() {
+        Map<String, EntityTypeOption> typeOptions = new HashMap<>();
+        Set<UUID> seenEntities = new HashSet<>();
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                addEntityTypeOption(typeOptions, seenEntities, entity);
+            }
+
+            for (Chunk chunk : world.getLoadedChunks()) {
+                for (Entity entity : chunk.getEntities()) {
+                    addEntityTypeOption(typeOptions, seenEntities, entity);
+                }
+            }
+        }
+
+        return typeOptions.values().stream()
+            .sorted(Comparator.comparingInt(EntityTypeOption::count).reversed()
+                .thenComparing(EntityTypeOption::displayName, String.CASE_INSENSITIVE_ORDER))
+            .toList();
+    }
+
+    private void addEntityTypeOption(Map<String, EntityTypeOption> typeOptions, Set<UUID> seenEntities, Entity entity) {
+        if (entity instanceof Player || !seenEntities.add(entity.getUniqueId())) {
+            return;
+        }
+
+        String rawName = entity.getType().name();
+        EntityTypeOption existing = typeOptions.get(rawName);
+        if (existing == null) {
+            typeOptions.put(rawName, new EntityTypeOption(rawName, formatEntityTypeName(rawName), 1,
+                entity.getWorld().getName(), entity.getLocation().clone()));
+            return;
+        }
+
+        typeOptions.put(rawName, existing.withIncrementedCount());
+    }
+
+    private EntityTeleportDebugCounts countEntityTeleportDebugData() {
+        int bukkitEntities = 0;
+        int chunkEntities = 0;
+        int players = 0;
+        int tileEntities = 0;
+        Map<String, Integer> typeCounts = new HashMap<>();
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                bukkitEntities++;
+                typeCounts.merge(formatEntityTypeName(entity.getType().name()), 1, Integer::sum);
+                if (entity instanceof Player) {
+                    players++;
+                }
+            }
+
+            for (Chunk chunk : world.getLoadedChunks()) {
+                tileEntities += chunk.getTileEntities().length;
+                for (Entity ignored : chunk.getEntities()) {
+                    chunkEntities++;
+                }
+            }
+        }
+
+        String topTypeLine = typeCounts.entrySet().stream()
+            .filter(entry -> !entry.getKey().equalsIgnoreCase("Player"))
+            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()
+                .thenComparing(Map.Entry::getKey))
+            .limit(3)
+            .map(entry -> entry.getKey() + ": " + entry.getValue())
+            .collect(Collectors.joining(", "));
+        if (topTypeLine.isBlank()) {
+            topTypeLine = "keine Nicht-Spieler-Typen";
+        }
+
+        return new EntityTeleportDebugCounts(bukkitEntities, chunkEntities, players, tileEntities,
+            ChatColor.YELLOW + "Top-Typen: " + topTypeLine);
+    }
+
+    private double nearestPlayerDistance(Entity entity) {
+        double nearestDistanceSquared = Double.POSITIVE_INFINITY;
+        Location entityLocation = entity.getLocation();
+        for (Player player : entity.getWorld().getPlayers()) {
+            double distanceSquared = player.getLocation().distanceSquared(entityLocation);
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return nearestDistanceSquared == Double.POSITIVE_INFINITY
+            ? Double.POSITIVE_INFINITY
+            : Math.sqrt(nearestDistanceSquared);
+    }
+
+    private Entity findEntity(UUID entityId) {
+        Entity entity = Bukkit.getEntity(entityId);
+        if (entity != null) {
+            return entity;
+        }
+
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity worldEntity : world.getEntities()) {
+                if (worldEntity.getUniqueId().equals(entityId)) {
+                    return worldEntity;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String describeEntity(Entity entity) {
+        String customName = entity.getCustomName();
+        if (customName != null && !customName.isBlank()) {
+            return customName;
+        }
+
+        String visibleName = entity.getName();
+        if (visibleName != null && !visibleName.isBlank()) {
+            return visibleName;
+        }
+
+        return formatEntityTypeName(entity.getType().name());
+    }
+
+    private Material getEntityIcon(Entity entity) {
+        String typeName = entity.getType().name();
+        return getEntityTypeIcon(typeName, entity instanceof LivingEntity);
+    }
+
+    private Material getEntityTypeIcon(String typeName) {
+        return getEntityTypeIcon(typeName, false);
+    }
+
+    private Material getEntityTypeIcon(String typeName, boolean livingEntity) {
+        if (typeName.equals("ITEM_DISPLAY")) {
+            return Material.ITEM_FRAME;
+        }
+        if (typeName.equals("ITEM_FRAME") || typeName.equals("GLOW_ITEM_FRAME")) {
+            return Material.ITEM_FRAME;
+        }
+        if (livingEntity) {
+            return Material.ZOMBIE_HEAD;
+        }
+        if (typeName.equals("ITEM")) {
+            return Material.CHEST;
+        }
+        if (typeName.equals("EXPERIENCE_ORB")) {
+            return Material.EXPERIENCE_BOTTLE;
+        }
+        if (typeName.contains("MINECART")) {
+            return Material.MINECART;
+        }
+        if (typeName.equals("BOAT") || typeName.endsWith("_BOAT")) {
+            return Material.OAK_BOAT;
+        }
+        if (typeName.contains("PROJECTILE") || typeName.equals("ARROW") || typeName.equals("TRIDENT")) {
+            return Material.ARROW;
+        }
+        return Material.ENDER_EYE;
+    }
+
+    private String formatBlockLocation(Location location) {
+        return location.getBlockX() + ", " + location.getBlockY() + ", " + location.getBlockZ();
+    }
+
     private List<Plugin> getSortedPlugins() {
         List<Plugin> plugins = new ArrayList<>(List.of(Bukkit.getPluginManager().getPlugins()));
         plugins.sort(Comparator.comparing(Plugin::getName, String.CASE_INSENSITIVE_ORDER));
@@ -479,6 +903,8 @@ public final class OperatorMenu implements Listener {
         return title.startsWith(MAIN_TITLE)
             || title.startsWith(PLAYER_TITLE)
             || title.startsWith(TPHERE_TITLE)
+            || title.startsWith(ENTITY_TELEPORT_TITLE)
+            || title.startsWith(ENTITY_TYPE_MENU_TITLE)
             || title.startsWith(PLUGIN_TITLE)
             || title.startsWith(PLUGIN_RESTART_TITLE)
             || title.startsWith(PERFORMANCE_TITLE);
@@ -1006,6 +1432,65 @@ public final class OperatorMenu implements Listener {
                 return ChatColor.YELLOW + "Chunks pruefen";
             }
             return ChatColor.GREEN + "Server wirkt stabil";
+        }
+    }
+
+    private record EntityTeleportTarget(
+        Entity entity,
+        UUID entityId,
+        String title,
+        String typeName,
+        String worldName,
+        Location location,
+        int chunkX,
+        int chunkZ,
+        double nearestPlayerDistance,
+        boolean hasPlayerNearby,
+        boolean valid
+    ) {
+        private String validLine() {
+            return valid
+                ? ChatColor.GREEN + "Status: teleportierbar"
+                : ChatColor.RED + "Status: nicht mehr gueltig";
+        }
+
+        private String playerNearbyLine() {
+            if (hasPlayerNearby) {
+                return ChatColor.GOLD + "Spieler-Naehe: innerhalb "
+                    + (int) ENTITY_PLAYER_NEARBY_RADIUS + " Bloecke";
+            }
+
+            return ChatColor.GREEN + "Spieler-Naehe: frei";
+        }
+
+        private String nearestPlayerLine() {
+            if (nearestPlayerDistance == Double.POSITIVE_INFINITY) {
+                return ChatColor.GRAY + "Naechster Spieler: " + ChatColor.WHITE + "keiner in dieser Welt";
+            }
+
+            return ChatColor.GRAY + "Naechster Spieler: " + ChatColor.WHITE
+                + (int) Math.round(nearestPlayerDistance) + " Bloecke entfernt";
+        }
+    }
+
+    private record EntityTeleportDebugCounts(
+        int bukkitEntities,
+        int chunkEntities,
+        int players,
+        int tileEntities,
+        String topTypeLine
+    ) {
+    }
+
+    private record EntityTypeOption(
+        String rawName,
+        String displayName,
+        int count,
+        String sampleWorldName,
+        Location sampleLocation
+    ) {
+        private EntityTypeOption withIncrementedCount() {
+            return new EntityTypeOption(rawName, displayName, count + 1, sampleWorldName, sampleLocation);
         }
     }
 
