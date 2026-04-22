@@ -1018,7 +1018,7 @@ public final class OperatorMenu implements Listener {
             }
 
             stopPerformanceTaskIfUnused();
-        }, 0L, SCOREBOARD_UPDATE_TICKS);
+        }, 19L, SCOREBOARD_UPDATE_TICKS);
     }
 
     private void stopPerformanceTaskIfUnused() {
